@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa Transversal LCS — Temas 5–18</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: #06070b;
+  --bg-base: #0b0d14;
+  --bg-card: #10121c;
+  --bg-elevated: #161a28;
+  --border: #1c2035;
+  --border-hover: #2a3050;
+  --text-primary: #eaedf5;
+  --text-secondary: #8b90ab;
+  --text-muted: #555b78;
+  --accent-indigo: #818cf8;
+  --accent-violet: #a78bfa;
+  --accent-amber: #fbbf24;
+  --accent-emerald: #34d399;
+  --accent-rose: #fb7185;
+  --accent-cyan: #22d3ee;
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'Outfit', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Fira Code', monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Subtle grain overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.app { position: relative; z-index: 1; }
+
+/* ═══ HEADER ═══ */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: linear-gradient(180deg, rgba(11,13,20,0.97) 0%, rgba(6,7,11,0.95) 100%);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+}
+.header-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.header-title {
+  font-family: var(--font-display);
+  font-size: 24px; font-weight: 800;
+  background: linear-gradient(135deg, #818cf8 0%, #fbbf24 50%, #34d399 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.header-sub {
+  font-size: 11px; color: var(--text-muted);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px;
+}
+
+/* Tab bar */
+.tab-bar {
+  display: flex; gap: 3px;
+  background: var(--bg-base); border-radius: 8px; padding: 3px;
+  border: 1px solid var(--border);
+}
+.tab-btn {
+  padding: 7px 18px; border-radius: var(--radius-sm); border: none;
+  cursor: pointer; font-family: var(--font-body); font-size: 13px; font-weight: 600;
+  background: transparent; color: var(--text-muted); transition: all 0.2s;
+}
+.tab-btn.active { background: var(--bg-elevated); color: var(--text-primary); }
+.tab-btn:hover:not(.active) { color: var(--text-secondary); }
+
+/* Filters */
+.filters { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+.search-input {
+  background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 12px; color: var(--text-primary); font-size: 13px; font-family: var(--font-body);
+  width: 280px; outline: none; transition: border-color 0.2s;
+}
+.search-input:focus { border-color: var(--accent-indigo); }
+.search-input::placeholder { color: var(--text-muted); }
+.filter-group { display: flex; gap: 4px; }
+.filter-btn {
+  padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+  font-family: var(--font-body); transition: all 0.15s; background: transparent;
+}
+
+/* ═══ MAIN ═══ */
+.main { padding: 20px 24px; max-width: 1440px; margin: 0 auto; }
+
+/* ═══ BLOQUES VIEW ═══ */
+.bloques-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.bloque-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 20px; cursor: pointer; transition: all 0.3s;
+  position: relative; overflow: hidden;
+}
+.bloque-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.bloque-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+.bloque-card.selected { border-color: var(--border-hover); }
+.bloque-num {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 800; font-size: 18px;
+}
+.bloque-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.bloque-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--text-primary); }
+.bloque-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.tema-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+.tema-tag {
+  padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  white-space: nowrap;
+}
+.bloque-stats { display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); }
+
+/* Ejes grid */
+.ejes-section-title {
+  font-family: var(--font-display); font-size: 16px; font-weight: 700;
+  color: var(--text-primary); margin-bottom: 14px; margin-top: 8px;
+}
+.ejes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+
+/* Eje card */
+.eje-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 14px; cursor: pointer; transition: all 0.25s; position: relative;
+  border-left: 3px solid transparent;
+}
+.eje-card:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+.eje-card.puente { border-right: 2px dashed var(--accent-amber); }
+.eje-cat-label { font-size: 11px; font-weight: 600; margin-bottom: 4px; }
+.eje-name { font-family: var(--font-display); font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.eje-temas { display: flex; gap: 4px; flex-wrap: wrap; }
+.puente-badge {
+  position: absolute; top: 8px; right: 8px; font-size: 13px;
+}
+
+/* ═══ MATRIZ VIEW ═══ */
+.matriz-wrap { overflow-x: auto; }
+.matriz-table { border-collapse: collapse; width: 100%; min-width: 950px; }
+.matriz-table th {
+  padding: 8px 6px; font-family: var(--font-body); font-weight: 600; font-size: 11px;
+  color: var(--text-muted); border-bottom: 1px solid var(--border); text-align: center;
+  position: sticky; top: 0; background: var(--bg-deep); z-index: 2;
+}
+.matriz-table th:first-child { text-align: left; width: 220px; }
+.matriz-table td { padding: 3px 2px; text-align: center; }
+.matriz-table td:first-child { padding: 6px 8px; text-align: left; }
+.matriz-table tr { border-bottom: 1px solid rgba(28,32,53,0.3); }
+.matriz-cell {
+  width: 40px; height: 28px; border-radius: 4px; margin: 0 auto; cursor: pointer;
+  transition: all 0.15s; border: 1px solid transparent;
+}
+.matriz-cell:hover { transform: scale(1.15); }
+.matriz-cell.selected { border-width: 2px; }
+.matriz-cell.empty { background: var(--bg-base); cursor: default; }
+.matriz-cell.empty:hover { transform: none; }
+.matriz-eje-name { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.matriz-eje-name:hover .eje-name-text { color: var(--accent-indigo); }
+.eje-name-text { font-size: 12px; font-weight: 600; color: var(--text-primary); transition: color 0.15s; }
+.sigma-col { font-family: var(--font-mono); font-size: 12px; color: var(--accent-amber); font-weight: 600; padding: 6px 8px !important; }
+
+/* Cell detail */
+.cell-detail {
+  margin-top: 16px; background: var(--bg-card); border-radius: var(--radius-md);
+  padding: 16px; border: 1px solid var(--border);
+  animation: slideUp 0.2s ease;
+}
+
+/* ═══ GRAFO VIEW ═══ */
+.grafo-layout { display: flex; gap: 16px; flex-wrap: wrap; }
+.grafo-svg-wrap { flex: 1 1 700px; overflow-x: auto; }
+.grafo-svg {
+  width: 100%; max-width: 940px; background: var(--bg-base);
+  border-radius: var(--radius-lg); border: 1px solid var(--border);
+}
+.grafo-sidebar { flex: 0 0 260px; max-height: 620px; overflow-y: auto; padding-right: 4px; }
+.grafo-sidebar-title { font-family: var(--font-display); font-size: 14px; color: var(--text-muted); margin-bottom: 10px; }
+.coverage-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.coverage-label { font-size: 11px; font-weight: 600; width: 28px; }
+.coverage-bar-bg { flex: 1; height: 8px; background: var(--bg-elevated); border-radius: 4px; overflow: hidden; }
+.coverage-bar { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.coverage-count { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); width: 20px; text-align: right; }
+
+/* ═══ EJES VIEW ═══ */
+.ejes-layout { display: flex; gap: 20px; }
+.ejes-sidebar {
+  flex: 0 0 310px; max-height: calc(100vh - 160px); overflow-y: auto;
+  padding-right: 8px;
+}
+.ejes-sidebar::-webkit-scrollbar { width: 4px; }
+.ejes-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.ejes-main { flex: 1; min-width: 0; }
+.ejes-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  height: 320px; color: var(--text-muted); font-style: italic; font-size: 15px;
+}
+
+/* ═══ EJE DETAIL ═══ */
+.eje-detail-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.eje-detail-badge {
+  padding: 3px 12px; border-radius: 5px; font-size: 12px; font-weight: 600;
+}
+.eje-detail-title {
+  font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text-primary);
+}
+.eje-detail-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 22px; }
+.section-title {
+  font-family: var(--font-display); font-size: 15px; font-weight: 600;
+  color: var(--text-primary); margin-bottom: 10px; margin-top: 4px;
+}
+.manif-item {
+  padding: 10px 12px; margin-bottom: 6px; border-radius: var(--radius-md);
+  border: 1px solid transparent; transition: all 0.15s;
+}
+.manif-item.active { background: var(--bg-card); }
+.manif-item.inactive { background: var(--bg-deep); opacity: 0.3; }
+.manif-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.manif-text { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+.art-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+.art-tag {
+  background: var(--bg-elevated); color: var(--text-secondary); padding: 3px 10px;
+  border-radius: 4px; font-size: 12px; font-family: var(--font-mono);
+}
+.conn-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+.conn-btn {
+  padding: 5px 12px; border-radius: var(--radius-sm); font-size: 12px;
+  cursor: pointer; font-family: var(--font-body); border: 1px solid; transition: all 0.15s;
+  background: transparent;
+}
+.conn-btn:hover { transform: translateY(-1px); }
+
+/* Consejo box */
+.consejo-box {
+  margin-top: 22px; padding: 16px; border-radius: var(--radius-md);
+  background: rgba(52, 211, 153, 0.06); border: 1px solid rgba(52, 211, 153, 0.2);
+}
+.consejo-label { font-weight: 700; font-size: 13px; color: var(--accent-emerald); margin-bottom: 6px; }
+.consejo-text { font-size: 13px; color: #a7f3d0; line-height: 1.6; font-style: italic; }
+
+/* ═══ DETAIL PANEL (OVERLAY) ═══ */
+.detail-overlay {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(540px, 92vw);
+  background: var(--bg-base); border-left: 1px solid var(--border);
+  overflow-y: auto; z-index: 200;
+  box-shadow: -10px 0 40px rgba(0,0,0,0.6);
+  padding: 20px 24px;
+  animation: slideIn 0.25s ease;
+}
+.detail-overlay-bg {
+  position: fixed; inset: 0; z-index: 199;
+  background: rgba(0,0,0,0.4); backdrop-filter: blur(2px);
+}
+.close-btn {
+  position: sticky; top: 0; float: right; z-index: 10;
+  background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-muted);
+  width: 34px; height: 34px; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 16px; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.close-btn:hover { background: var(--border); color: var(--text-primary); }
+
+/* ═══ ANIMATIONS ═══ */
+@keyframes slideIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: fadeIn 0.3s ease; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header { padding: 10px 14px; }
+  .header-title { font-size: 18px; }
+  .main { padding: 14px; }
+  .bloques-grid { grid-template-columns: 1fr; }
+  .ejes-layout { flex-direction: column; }
+  .ejes-sidebar { flex: none; max-height: 300px; }
+  .grafo-layout { flex-direction: column; }
+  .grafo-sidebar { flex: none; }
+  .search-input { width: 100%; }
+  .detail-overlay { width: 100vw; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  DATA
+// ═══════════════════════════════════════════════════════════════
+
+const TEMAS = {
+  T5: {
+    id:"T5", num:5,
+    titulo:"El contrato de seguro: concepto y caracteres",
+    subtitulo:"Regulación en el Derecho español. LCS: antecedentes, estructura y ámbito de aplicación",
+    bloque:1, color:"#818cf8",
+    conceptos:["Teoría dualista vs. unitaria","Art. 1 LCS: definición legal","Buena fe (uberrimae fidei)","Contrato bilateral, oneroso, aleatorio","Adhesión y condiciones generales","CC art. 1791 (derogado)","Ley 50/1980: estructura Títulos I-IV","Ámbito: art. 2 imperatividad"],
+    articulos:["Art. 1 LCS","Art. 2 LCS","Art. 5 LCS","Art. 1791 CC","Art. 57 CCom"],
+    doctrina:["Garrigues: uberrimae fidei, semillero de contratos diversos","Sánchez Calero","Bruck"]
+  },
+  T6: {
+    id:"T6", num:6,
+    titulo:"Elementos personales y reales del contrato",
+    subtitulo:"Asegurador, tomador, asegurado, beneficiario. Riesgo, prima, objeto. Interés en daños y personas",
+    bloque:1, color:"#a78bfa",
+    conceptos:["Asegurador: entidad autorizada","Tomador del seguro","Asegurado vs. tomador","Beneficiario: designación y revocación","Interés asegurable","Riesgo: concepto y delimitación","Prima: concepto, clases, base técnica","Riesgo e interés en daños vs. personas","Seguro por cuenta ajena (art. 7)"],
+    articulos:["Art. 7 LCS","Art. 8 LCS","Art. 14 LCS","Art. 15 LCS"],
+    doctrina:["Garrigues: elementos esenciales","Sánchez Calero: interés asegurable"]
+  },
+  T7: {
+    id:"T7", num:7,
+    titulo:"Elementos formales del contrato",
+    subtitulo:"Póliza, proposición, solicitud. Cobertura provisional. Contenido mínimo. Comercialización a distancia",
+    bloque:1, color:"#c4b5fd",
+    conceptos:["Póliza: clases y contenido mínimo","Proposición y solicitud","Documentos de cobertura provisional","Condiciones generales, particulares, especiales","Comercialización a distancia de servicios financieros","Art. 5: forma escrita","Art. 8: contenido mínimo"],
+    articulos:["Art. 5 LCS","Art. 6 LCS","Art. 8 LCS"],
+    doctrina:["Sánchez Calero: naturaleza consensual"]
+  },
+  T8: {
+    id:"T8", num:8,
+    titulo:"Disposiciones generales del contrato de seguro",
+    subtitulo:"Condiciones generales/especiales/particulares. Cláusulas limitativas y lesivas. Derechos y deberes. Mora. Duración. Prescripción. Jurisdicción",
+    bloque:1, color:"#e0d4ff",
+    conceptos:["Condiciones generales, especiales, particulares","Cláusulas limitativas de derechos","Prohibición cláusulas lesivas","Deber declaración del riesgo (art. 10)","Agravación del riesgo (arts. 11-12)","Disminución del riesgo (art. 13)","Pago de la prima (arts. 14-15)","Comunicación del siniestro (art. 16)","Deber de salvamento (art. 17)","Provocación del siniestro (art. 19)","Mora del asegurador (art. 20)","Duración y prescripción (arts. 22-23)","Jurisdicción (art. 24)","Derecho al olvido oncológico"],
+    articulos:["Art. 3 LCS","Art. 10 LCS","Art. 11 LCS","Art. 12 LCS","Art. 13 LCS","Art. 14 LCS","Art. 15 LCS","Art. 16 LCS","Art. 17 LCS","Art. 19 LCS","Art. 20 LCS","Art. 22 LCS","Art. 23 LCS","Art. 24 LCS"],
+    doctrina:["Garrigues: buena fe precontractual","Sánchez Calero: mora del asegurador"]
+  },
+  T9: {
+    id:"T9", num:9,
+    titulo:"Disposiciones generales: seguros contra daños",
+    subtitulo:"Interés asegurable. Principio indemnizatorio. Suma asegurada. Infraseguro/sobreseguro. Seguro múltiple. Coaseguro. Transmisión. Peritación. Subrogación",
+    bloque:2, color:"#fbbf24",
+    conceptos:["Principio indemnizatorio (art. 26)","Suma asegurada e interés asegurable","Infraseguro y regla proporcional (art. 30)","Sobreseguro (art. 31)","Seguro múltiple y coaseguro (art. 32)","Transmisión del objeto asegurado","Peritación de los daños","Derechos de acreedores sobre indemnización","Subrogación del asegurador (art. 43)","Póliza estimada vs. valor real"],
+    articulos:["Art. 25 LCS","Art. 26 LCS","Art. 27 LCS","Art. 28 LCS","Art. 30 LCS","Art. 31 LCS","Art. 32 LCS","Art. 37-39 LCS","Art. 38 LCS","Art. 43 LCS"],
+    doctrina:["Garrigues: función indemnizatoria","Sánchez Calero: principio indemnizatorio"]
+  },
+  T10: {
+    id:"T10", num:10,
+    titulo:"Seguros específicos sobre cosas",
+    subtitulo:"Seguro de incendios: objeto, riesgos. Seguro de robo: objeto, modalidades. Seguro de transporte terrestre: abandono, póliza flotante",
+    bloque:2, color:"#f59e0b",
+    conceptos:["Seguro de incendios (arts. 45-49)","Riesgos cubiertos y excluidos en incendios","Seguro de robo (arts. 50-53)","Recuperación del objeto en robo","Seguro de transporte terrestre (arts. 54-62)","Facultad de abandono","Póliza flotante","Valor del interés asegurado en cosas"],
+    articulos:["Art. 45-49 LCS","Art. 50-53 LCS","Art. 54-62 LCS"],
+    doctrina:["Garrigues: seguro de incendios como prototipo"]
+  },
+  T11: {
+    id:"T11", num:11,
+    titulo:"Seguros sobre el patrimonio",
+    subtitulo:"Lucro cesante. Pérdida de beneficios. Seguro de caución: concepto, diferencias con fianza. Seguro de crédito: insolvencia, pérdida final",
+    bloque:2, color:"#fb923c",
+    conceptos:["Seguro de lucro cesante (art. 63)","Pérdida de beneficios: modalidades","Predeterminación de la indemnización","Seguro de caución (art. 68)","Diferencias caución/fianza: accesoriedad, excusión, onerosidad","Siniestro = incumplimiento del tomador","Cláusulas de primer requerimiento","Seguro de crédito (arts. 69-72)","Insolvencia del deudor","Pérdida final","Deberes del asegurado y tomador","Acción de reembolso (art. 68 in fine)"],
+    articulos:["Art. 63 LCS","Art. 68 LCS","Art. 69-72 LCS","Arts. 1822-1847 CC"],
+    doctrina:["Olivencia: seguro de caución","STS 19/05/1990","STS 30/07/1991","STS 21/04/1989"]
+  },
+  T12: {
+    id:"T12", num:12,
+    titulo:"Seguro de RC y defensa jurídica",
+    subtitulo:"RC: concepto, riesgo, siniestro. Cláusulas claim made. Acción directa. Repetición. Defensa jurídica: concepto, forma, exclusiones",
+    bloque:2, color:"#fcd34d",
+    conceptos:["Seguro de RC: concepto (arts. 73-76)","Riesgo en RC","Siniestro: reclamación vs. hecho motivador","Cláusulas claim made","Prescripción en RC","Dirección jurídica del asegurador","Acción directa del perjudicado (art. 76)","Excepciones oponibles al perjudicado","Derecho de repetición del asegurador","Seguro de defensa jurídica (arts. 76a-76g)","Libre elección de abogado","Exclusiones en defensa jurídica"],
+    articulos:["Art. 73 LCS","Art. 74 LCS","Art. 75 LCS","Art. 76 LCS","Art. 76a-76g LCS"],
+    doctrina:["Sánchez Calero: acción directa"]
+  },
+  T13: {
+    id:"T13", num:13,
+    titulo:"Seguros de personas y seguro de vida (general)",
+    subtitulo:"Concepto y clases de seguros de personas. Diferencias con seguros de daños. Disposiciones generales. Clases de seguro de vida. Selección de riesgos. Valores garantizados",
+    bloque:3, color:"#34d399",
+    conceptos:["Seguros de personas: concepto y clases","Diferencias con seguros de daños","No aplicación principio indemnizatorio","Inaplicabilidad de subrogación (art. 82)","Seguro de vida: clases (muerte, supervivencia, mixto)","Riesgo en seguro de vida: selección","Valores garantizados: rescate y reducción","Provisión matemática","Arts. 80-99 LCS: estructura"],
+    articulos:["Art. 80 LCS","Art. 82 LCS","Art. 83 LCS","Art. 95 LCS","Art. 96 LCS"],
+    doctrina:["Garrigues: necesidad abstracta vs. concreta","Sánchez Calero: naturaleza del seguro de vida"]
+  },
+  T14: {
+    id:"T14", num:14,
+    titulo:"Aspectos específicos del seguro de vida",
+    subtitulo:"Protección de menores y discapacidad. Beneficiario. Declaración del riesgo e indisputabilidad. Riesgos excluidos. Suicidio. Registro de fallecimiento. No discriminación",
+    bloque:3, color:"#10b981",
+    conceptos:["Protección de menores y personas con discapacidad","Beneficiario: análisis detallado (arts. 84-88)","Declaración del riesgo en vida","Indisputabilidad (art. 89): plazo 1 año","Derecho al olvido oncológico","Riesgos excluidos en vida","Suicidio del asegurado (art. 93)","Registro de seguros de fallecimiento (Ley 20/2005)","No discriminación por discapacidad (DA 4ª LCS)","No discriminación por condiciones de salud"],
+    articulos:["Art. 84-88 LCS","Art. 89 LCS","Art. 93 LCS","Ley 20/2005","DA 4ª LCS","Ley 26/2011"],
+    doctrina:["Sánchez Calero: indisputabilidad"]
+  },
+  T15: {
+    id:"T15", num:15,
+    titulo:"El seguro de accidentes",
+    subtitulo:"Régimen jurídico. Delimitación del riesgo cubierto",
+    bloque:3, color:"#6ee7b7",
+    conceptos:["Seguro de accidentes (arts. 100-104)","Concepto de accidente: violento, externo, involuntario","Delimitación del riesgo cubierto","Invalidez permanente por accidente","Prestaciones: muerte, invalidez, asistencia","Inaplicabilidad subrogación","Agravación del riesgo en personas: reforma art. 11"],
+    articulos:["Art. 100 LCS","Art. 101 LCS","Art. 102 LCS","Art. 103 LCS","Art. 104 LCS"],
+    doctrina:["Sánchez Calero: accidente como riesgo"]
+  },
+  T16: {
+    id:"T16", num:16,
+    titulo:"Seguro de RC en circulación de vehículos a motor",
+    subtitulo:"RC y aseguramiento obligatorio. Ámbito. Indemnización. Oferta/respuesta motivada. Mora. Sistema de valoración de daños corporales",
+    bloque:3, color:"#22d3ee",
+    conceptos:["SOA: TRLRCSCVM","RC y aseguramiento obligatorio","Ámbito del aseguramiento","Indemnización en SOA","Oferta y respuesta motivada","Mora del asegurador en SOA","Sistema de valoración del daño corporal (baremo)","Reparación íntegra y vertebrada","Perjuicio personal básico y particular","Lucro cesante: multiplicando × multiplicador","5 categorías de perjudicados por muerte","Perjudicado funcional o por analogía","CCS: funciones en automóviles"],
+    articulos:["TRLRCSCVM","Ley 35/2015","Art. 62 TRLRCSCVM","RD 907/2022"],
+    doctrina:["Ley 35/2015: principios del nuevo baremo"]
+  },
+  T17: {
+    id:"T17", num:17,
+    titulo:"Seguros obligatorios",
+    subtitulo:"SOV. RC para actividades. Edificación. Cantidades anticipadas en viviendas. Riesgos nucleares. RC medioambiental",
+    bloque:3, color:"#67e8f9",
+    conceptos:["Seguro obligatorio de viajeros (SOV)","RC para ejercicio de actividades","Seguros obligatorios de edificación (LOE)","Seguro decenal","Seguro de cantidades anticipadas en viviendas","Seguro de riesgos nucleares","RC medioambiental (Ley 26/2007)","CCS en seguros obligatorios","Función social del seguro obligatorio"],
+    articulos:["Ley 6/2009","LOE arts. 19-20","Ley 57/1968","Ley 26/2007","Ley 12/2011"],
+    doctrina:["Sánchez Calero: fundamento de la obligatoriedad"]
+  },
+  T18: {
+    id:"T18", num:18,
+    titulo:"Seguros agrarios, marítimos, embarcaciones y aéreo",
+    subtitulo:"Seguros agrarios combinados. Seguros marítimos. Embarcaciones de recreo o deportivas. Seguro aéreo",
+    bloque:3, color:"#a5f3fc",
+    conceptos:["Seguros agrarios combinados","Agroseguro y Enesa","Ley 87/1978 seguros agrarios","Seguros marítimos: régimen LNM","Póliza de viaje y póliza de tiempo","Seguro de embarcaciones de recreo/deportivas","Seguro aéreo","Convenios internacionales (Montreal)","Reaseguro en grandes riesgos"],
+    articulos:["Ley 87/1978","LNM (Ley 14/2014)","Convenio Montreal 1999"],
+    doctrina:["Garrigues: seguro marítimo como origen histórico"]
+  }
+};
+
+const CATEGORIAS_EJE = {
+  principio: { label:"Principio", color:"#818cf8", icon:"⚖️" },
+  elemento: { label:"Elemento esencial", color:"#fbbf24", icon:"🔑" },
+  mecanismo: { label:"Mecanismo operativo", color:"#34d399", icon:"⚙️" },
+  estructura: { label:"Estructura normativa", color:"#ef4444", icon:"📜" },
+  doctrina: { label:"Doctrina", color:"#a78bfa", icon:"📚" },
+  debate: { label:"Debate doctrinal", color:"#fb7185", icon:"💬" }
+};
+
+const EJES = [
+  {
+    id:"eje1", nombre:"Principio indemnizatorio", categoria:"principio",
+    temas:["T5","T9","T10","T11","T12","T13","T15","T18"],
+    descripcion:"Principio rector de los seguros de daños: el seguro no puede ser fuente de enriquecimiento. La indemnización se limita al daño efectivamente sufrido (art. 26 LCS). En seguros de personas no aplica stricto sensu.",
+    manifestaciones:{
+      T5:"Fundamento de la teoría dualista: la indemnización como causa en seguros de daños vs. motivo económico en seguros de vida. Art. 1 LCS: 'indemnizar el daño' / 'satisfacer un capital'.",
+      T9:"Aplicación plena: arts. 26-32. Sobreseguro (31), infraseguro (30), regla proporcional. Póliza estimada como excepción. Prohibición de enriquecimiento injusto.",
+      T10:"En incendios, robo y transporte: la indemnización se cifra en el valor del interés dañado. En transporte: facultad de abandono como excepción.",
+      T11:"Peculiaridades en caución: el art. 68 habla de 'resarcimiento o penalidad'. En crédito: la indemnización se vincula a la pérdida final. En lucro cesante: predeterminación de la indemnización.",
+      T12:"En RC: se manifiesta como reparación íntegra del daño al perjudicado. El baremo objetiva la cuantificación.",
+      T13:"NO se aplica en seguros de personas. Art. 82 prohíbe subrogación. El asegurado puede acumular prestaciones de varios seguros.",
+      T15:"No aplica en accidentes: la prestación es la suma convenida, no el daño medido. Puede haber acumulación.",
+      T18:"En seguros marítimos rige con peculiaridades (abandono). En agrarios: papel de Agroseguro en la tasación."
+    },
+    articulosLCS:["Art. 1","Art. 26","Art. 27","Art. 30","Art. 31","Art. 32","Art. 68","Art. 82"],
+    conexiones:["eje2","eje4","eje10"],
+    consejo:"Eje vertebrador maestro. Al exponer cualquier seguro de daños, arranca desde el principio indemnizatorio y matiza. Al pasar a personas (T13), marca la ruptura: 'Frente a lo expuesto, en los seguros de personas la prestación no busca reparar un daño tasable…'"
+  },
+  {
+    id:"eje2", nombre:"Buena fe (uberrimae fidei)", categoria:"principio",
+    temas:["T5","T6","T8","T9","T10","T11","T13","T14"],
+    descripcion:"El contrato de seguro es de máxima buena fe. Opera antes, durante y después de la perfección. Garrigues: uberrimae fidei contractus. Fundamenta los deberes de declaración del riesgo y comunicación del siniestro.",
+    manifestaciones:{
+      T5:"Garrigues: uberrimae fidei contractus. Buena fe precontractual, concomitante y ulterior. Art. 57 CCom. La LCS enfoca desde la mala fe/dolo.",
+      T6:"Condiciona la declaración del riesgo por el tomador. El cuestionario como instrumento de la buena fe.",
+      T8:"Se concreta en: deber de declaración (art. 10), agravación (11-12), comunicación del siniestro (16), salvamento (17). Consecuencias de la mala fe: arts. 10, 16, 32, 48.",
+      T9:"Fundamenta la prohibición de sobreseguro doloso y la comunicación de pluralidad de seguros (art. 32). Malquerencia (art. 48).",
+      T10:"En incendios: importancia de la declaración exacta del valor. En robo: deber de cooperación con investigación.",
+      T11:"La provocación del siniestro por el tomador tensiona la buena fe. En caución: ¿buena fe del deudor-tomador?",
+      T13:"En seguros de personas: cuestionario de salud como manifestación de la buena fe precontractual.",
+      T14:"Indisputabilidad (art. 89): pasado 1 año, solo el dolo rompe el contrato. Derecho al olvido oncológico como límite al cuestionario."
+    },
+    articulosLCS:["Art. 10","Art. 11","Art. 16","Art. 17","Art. 19","Art. 32","Art. 89"],
+    conexiones:["eje1","eje3","eje5"],
+    consejo:"Hilo narrativo continuo: 'La exigencia de máxima buena fe que define al contrato (T5) se concreta en los deberes del Título I (T8), y se modula en cada rama: cuestionario de salud en vida (T14), declaración de valor en incendios (T10)…'"
+  },
+  {
+    id:"eje3", nombre:"Declaración y delimitación del riesgo", categoria:"mecanismo",
+    temas:["T5","T6","T8","T9","T11","T13","T14","T15"],
+    descripcion:"El mecanismo por el cual el tomador informa al asegurador sobre las circunstancias del riesgo. Art. 10 LCS: el cuestionario como instrumento. Fundamento: información asimétrica.",
+    manifestaciones:{
+      T5:"Fundamento conceptual: la información asimétrica justifica el deber precontractual de declaración.",
+      T6:"El riesgo como elemento real: su correcta delimitación determina la prima y la existencia de causa.",
+      T8:"Regulación detallada: art. 10 (cuestionario), consecuencias del dolo/culpa grave, reducción proporcional. Reforma por Ley 20/2015.",
+      T9:"En seguros de daños: la declaración determina la suma asegurada y el interés asegurable. Base de la tarificación.",
+      T11:"En caución: ¿cómo se delimita un riesgo de conducta (incumplimiento)? En crédito: análisis de solvencia del deudor.",
+      T13:"Cuestionario de salud como instrumento principal. Variación de salud y agravación del riesgo.",
+      T14:"Indisputabilidad tras 1 año (art. 89). Derecho al olvido oncológico (art. 10 in fine). Solo dolo rompe la indisputabilidad.",
+      T15:"En accidentes: delimitación del concepto de 'accidente' (violento, externo, involuntario). La variación de salud NO es agravación."
+    },
+    articulosLCS:["Art. 10","Art. 11","Art. 89"],
+    conexiones:["eje2","eje4","eje5"],
+    consejo:"Puente parte general → especial: 'El mecanismo del art. 10 que acabamos de ver se modula según la naturaleza del riesgo: en daños, declaración de valor; en personas, cuestionario de salud; en caución, análisis de solvencia…'"
+  },
+  {
+    id:"eje4", nombre:"Subrogación del asegurador", categoria:"mecanismo",
+    temas:["T5","T8","T9","T10","T11","T12","T13","T15"],
+    descripcion:"Tras pagar la indemnización, el asegurador se subroga en los derechos del asegurado contra el tercero responsable (art. 43). Prohibida en seguros de personas (art. 82).",
+    manifestaciones:{
+      T5:"La teoría dualista explica por qué el art. 82 prohíbe la subrogación en personas: reminiscencia unitaria según algunos autores.",
+      T8:"Marco general como mecanismo de recuperación post-siniestro. Relación con el deber de salvamento.",
+      T9:"Aplicación plena en seguros de daños a cosas. Art. 43: el asegurado debe facilitar la subrogación.",
+      T10:"En incendios, robo y transporte: subrogación contra el causante del daño. En transporte: especial relevancia.",
+      T11:"En caución: acción de reembolso (art. 68 in fine) más que subrogación clásica. 'Todo pago deberá ser reembolsado por el tomador'.",
+      T12:"En RC: subrogación del asegurador que ha pagado al perjudicado. Derecho de repetición contra el asegurado en ciertos casos.",
+      T13:"Prohibida por art. 82. Fundamento: la prestación no repara un daño tasable sino necesidad abstracta.",
+      T15:"Inaplicable en accidentes por extensión del art. 82."
+    },
+    articulosLCS:["Art. 43","Art. 68","Art. 82"],
+    conexiones:["eje1","eje2","eje10"],
+    consejo:"Nodo perfecto para transitar entre bloques: 'Si en daños la subrogación es consecuencia natural del pago (art. 43), la prohibición del art. 82 nos confirma la diferente naturaleza de los seguros de personas…'"
+  },
+  {
+    id:"eje5", nombre:"Agravación y disminución del riesgo", categoria:"mecanismo",
+    temas:["T8","T9","T13","T14","T15"],
+    descripcion:"Arts. 11-13 LCS: modificación sobrevenida del riesgo durante la vida del contrato. Deber de comunicar la agravación; facultad de comunicar la disminución. Reforma Ley 20/2015.",
+    manifestaciones:{
+      T8:"Régimen general: arts. 11-13. Plazos: 2 meses para propuesta de modificación, 15 días para aceptación, 1 mes para rescisión. Consecuencias del incumplimiento.",
+      T9:"En seguros de daños: la agravación puede implicar infraseguro sobrevenido o necesidad de ajuste de prima.",
+      T13:"En seguros de personas: reforma del art. 11 por Ley 20/2015: la variación de salud NO se considera agravación del riesgo.",
+      T14:"En vida: la indisputabilidad modera el efecto de la agravación. Interacción con el derecho al olvido oncológico.",
+      T15:"En accidentes: la variación de estado de salud no es agravación. Aplicación de la reforma del art. 11."
+    },
+    articulosLCS:["Art. 11","Art. 12","Art. 13"],
+    conexiones:["eje2","eje3"],
+    consejo:"Conecta con buena fe: 'El deber de comunicar la agravación es manifestación de la máxima buena fe, pero su alcance varía: plena en daños, moderada en personas tras la reforma del art. 11…'"
+  },
+  {
+    id:"eje6", nombre:"Imperatividad y autonomía de la voluntad", categoria:"estructura",
+    temas:["T5","T7","T8","T9","T13","T14","T17"],
+    descripcion:"Art. 2 LCS: las normas son imperativas salvo que la propia ley permita disposición. Protección del asegurado como parte débil. En seguros obligatorios: máxima rigidez.",
+    manifestaciones:{
+      T5:"Art. 2 como clave hermenéutica de toda la LCS. Excepción: grandes riesgos.",
+      T7:"Condiciones generales sometidas a control administrativo. Comercialización a distancia: normativa protectora.",
+      T8:"Cláusulas limitativas requieren aceptación expresa. Cláusulas lesivas: nulidad. Deberes inderogables en perjuicio del asegurado.",
+      T9:"Prohibición de enriquecimiento como norma imperativa. Pero: póliza estimada como dispositividad permitida.",
+      T13:"Disposiciones generales de personas: art. 82 imperativo. Pero: algunas normas de vida son dispositivas.",
+      T14:"Art. 93 (suicidio) permite pacto en contrario. Dispositividad en designación y revocación de beneficiario.",
+      T17:"Seguros obligatorios: máxima expresión de la imperatividad. No hay libertad de no contratar."
+    },
+    articulosLCS:["Art. 2","Art. 3"],
+    conexiones:["eje2","eje7"],
+    consejo:"Art. 2 como 'interruptor' narrativo: 'La imperatividad del art. 2 vertebra toda la LCS, pero se modula: desde la rigidez de los seguros obligatorios (T17) hasta la flexibilidad del art. 93 en vida…'"
+  },
+  {
+    id:"eje7", nombre:"Protección del asegurado/perjudicado", categoria:"principio",
+    temas:["T5","T7","T8","T9","T12","T13","T14","T16","T17"],
+    descripcion:"La LCS protege al asegurado como parte débil (contrato de adhesión). En RC, protección del perjudicado (tercero). Manifestaciones: imperatividad, acción directa, mora privilegiada, control administrativo.",
+    manifestaciones:{
+      T5:"Contrato de adhesión: subordinación del tomador. Control administrativo como garantía.",
+      T7:"Control de condiciones generales. Interpretación contra proferentem. Protección en comercialización a distancia.",
+      T8:"Mora del asegurador (art. 20): interés del 20%. Cláusulas limitativas requieren aceptación especial. Prohibición cláusulas lesivas.",
+      T9:"Derechos de los acreedores sobre la indemnización como protección de terceros.",
+      T12:"Acción directa (art. 76): protección máxima del perjudicado. Inoponibilidad de excepciones. Defensa jurídica: libre elección de abogado.",
+      T13:"Inaplicabilidad de subrogación protege al asegurado de personas frente a reclamaciones del asegurador.",
+      T14:"Registro de seguros de fallecimiento protege a beneficiarios. No discriminación por discapacidad (DA 4ª). Olvido oncológico.",
+      T16:"Baremo: reparación íntegra y vertebrada. Oferta motivada. CCS como red de seguridad.",
+      T17:"Seguros obligatorios: función social protege colectivos vulnerables (viajeros, compradores de vivienda)."
+    },
+    articulosLCS:["Art. 2","Art. 3","Art. 20","Art. 76","Ley 20/2005","DA 4ª LCS"],
+    conexiones:["eje6","eje8","eje12"],
+    consejo:"Gradiente de protección: 'Desde la imperatividad general (T5) hasta la acción directa en RC (T12), pasando por la mora privilegiada (T8), culminando en los seguros obligatorios donde el Estado impone la cobertura (T17).'"
+  },
+  {
+    id:"eje8", nombre:"Acción directa del perjudicado", categoria:"mecanismo",
+    temas:["T12","T16","T17"],
+    descripcion:"Art. 76 LCS: el perjudicado tiene acción directa contra el asegurador de RC. En SOA: inoponibilidad reforzada. Excepciones al perjudicado.",
+    manifestaciones:{
+      T12:"Régimen general del art. 76: acción directa, problema de las excepciones oponibles. Derecho de repetición del asegurador.",
+      T16:"En SOA: máxima protección. El perjudicado reclama directamente. Oferta motivada como procedimiento.",
+      T17:"En seguros obligatorios de RC para actividades: la acción directa es consustancial."
+    },
+    articulosLCS:["Art. 76 LCS"],
+    conexiones:["eje7","eje1"],
+    consejo:"Puente entre RC general y SOA: 'La acción directa del art. 76, pieza central en RC (T12), alcanza su máxima expresión en el SOA (T16), donde la inoponibilidad de excepciones se refuerza…'"
+  },
+  {
+    id:"eje9", nombre:"Designación de beneficiario", categoria:"elemento",
+    temas:["T6","T13","T14","T15"],
+    descripcion:"Acto jurídico unilateral, revocable. Especial relevancia en seguros de vida (arts. 84-88). Distinción del asegurado. Protección de menores.",
+    manifestaciones:{
+      T6:"Marco general: beneficiario como elemento personal, distinto del tomador y el asegurado. Naturaleza jurídica.",
+      T13:"En seguros de personas: el beneficiario recibe la prestación. Relevancia en seguro de vida.",
+      T14:"Regulación detallada: arts. 84-88. Irrevocabilidad pactada. Beneficiario genérico ('herederos'). Prelación legal. Protección de menores y personas con discapacidad.",
+      T15:"En accidentes: el beneficiario recibe la prestación en caso de muerte por accidente."
+    },
+    articulosLCS:["Art. 84","Art. 85","Art. 86","Art. 87","Art. 88"],
+    conexiones:["eje10","eje7"],
+    consejo:"Transición natural T6→T14: 'La figura del beneficiario, que en la parte general aparece como simple elemento personal (T6), despliega en el seguro de vida toda su complejidad…'"
+  },
+  {
+    id:"eje10", nombre:"Teoría dualista (daños vs. personas)", categoria:"debate",
+    temas:["T5","T9","T13","T14","T15"],
+    descripcion:"La imposibilidad de una definición unitaria lleva a distinguir seguros de daños (indemnización) y seguros de personas (prestación convenida). Garrigues: 'semillero de contratos diversos'.",
+    manifestaciones:{
+      T5:"Origen del debate: CC art. 1791 solo cubría daños. Garrigues: semillero de contratos. Art. 1 LCS supera la dicotomía con definición dual.",
+      T9:"Seguros de daños: prototipo de la función indemnizatoria estricta. Necesidad concreta.",
+      T13:"Seguros de personas: prototipo de la prestación convenida. Necesidad abstracta. Art. 82 confirma la separación.",
+      T14:"El seguro de vida como caso paradigmático: la vida no se puede indemnizar, se satisface un capital.",
+      T15:"Accidentes: zona gris entre daños y personas. ¿Indemnización o prestación? Art. 82 los incluye como personas."
+    },
+    articulosLCS:["Art. 1","Art. 26","Art. 80","Art. 82"],
+    conexiones:["eje1","eje4"],
+    consejo:"Arco narrativo maestro: abre con la teoría dualista (T5), despliega daños (T9-T12) y personas (T13-T15). Al cerrar, vuelve al art. 1 mostrando cómo la LCS integra ambas realidades."
+  },
+  {
+    id:"eje11", nombre:"Mora del asegurador", categoria:"mecanismo",
+    temas:["T8","T9","T12","T16"],
+    descripcion:"Art. 20 LCS: régimen privilegiado de mora. Interés de demora especial (actualmente 20% anual). Oferta motivada en SOA como mecanismo anti-mora.",
+    manifestaciones:{
+      T8:"Régimen general: art. 20. Dies a quo, interés moratorio, causa justificada para el retraso.",
+      T9:"En seguros de daños: la peritación del art. 38 puede justificar demora, pero no indefinidamente.",
+      T12:"En RC: la reclamación del perjudicado como dies a quo. Interacción con la acción directa.",
+      T16:"En SOA: oferta motivada como mecanismo para evitar la mora. Respuesta motivada del perjudicado."
+    },
+    articulosLCS:["Art. 20 LCS"],
+    conexiones:["eje7","eje1"],
+    consejo:"La mora conecta parte general con seguros específicos: 'El severo régimen del art. 20 (T8) se modula en SOA con la oferta motivada (T16), mecanismo que busca agilizar la indemnización…'"
+  },
+  {
+    id:"eje12", nombre:"Consorcio de Compensación de Seguros", categoria:"elemento",
+    temas:["T12","T16","T17","T18"],
+    descripcion:"Entidad pública empresarial: asegurador subsidiario y directo. Funciones en SOA, riesgos extraordinarios, seguros obligatorios, seguros agrarios.",
+    manifestaciones:{
+      T12:"En RC: cobertura cuando asegurador insolvente o vehículo no asegurado.",
+      T16:"En SOA: funciones de liquidación. Gestión de siniestros en supuestos especiales.",
+      T17:"En SOV: gestión del seguro obligatorio de viajeros. Red de seguridad en obligatorios.",
+      T18:"En agrarios: cobertura de riesgos extraordinarios. Riesgos catastróficos: recargo obligatorio."
+    },
+    articulosLCS:["ECSCS","TRLRCSCVM"],
+    conexiones:["eje7","eje8"],
+    consejo:"Nodo de convergencia institucional: 'El CCS aparece como hilo conductor: desde su función subsidiaria en SOA (T16) hasta riesgos extraordinarios (T18), pasando por seguros obligatorios (T17).'"
+  },
+  {
+    id:"eje13", nombre:"Seguro por cuenta ajena", categoria:"mecanismo",
+    temas:["T6","T11","T13","T14"],
+    descripcion:"Art. 7 LCS: el seguro puede contratarse por cuenta ajena. El tomador no coincide con el asegurado. Relevancia en caución y seguros colectivos de vida.",
+    manifestaciones:{
+      T6:"Marco general: art. 7. Distinción tomador/asegurado. Derechos y obligaciones diferenciados.",
+      T11:"Caución: configuración típica. El tomador es el deudor, el asegurado es el acreedor. Paradoja: quien paga la prima puede provocar el siniestro.",
+      T13:"Seguros colectivos de vida: el tomador (empresa) contrata por cuenta de los asegurados (empleados).",
+      T14:"Beneficiario como tercer interviniente que refuerza la estructura tripartita del seguro por cuenta ajena."
+    },
+    articulosLCS:["Art. 7 LCS"],
+    conexiones:["eje9","eje2"],
+    consejo:"Puente conceptual: 'La escisión tomador/asegurado del art. 7 alcanza su máxima expresión en caución (T11), donde paradójicamente quien paga la prima puede provocar el siniestro…'"
+  },
+  {
+    id:"eje14", nombre:"Provocación del siniestro y mala fe", categoria:"mecanismo",
+    temas:["T8","T9","T10","T11","T14"],
+    descripcion:"Art. 19 LCS: el asegurador queda liberado si el siniestro es causado por mala fe del asegurado. Tensión en caución (lo provoca el tomador) y en vida (suicidio).",
+    manifestaciones:{
+      T8:"Régimen general del art. 19. Mala fe del asegurado libera al asegurador. Distinción dolo/culpa grave.",
+      T9:"En seguros de daños: provocación dolosa (incendio provocado). Fraude como patología frecuente.",
+      T10:"En incendios: especial relevancia del incendio provocado. En robo: simulación.",
+      T11:"Paradoja de la caución: el siniestro lo causa el tomador (deudor), no el asegurado. Art. 19 dice 'asegurado', no 'tomador'.",
+      T14:"Suicidio (art. 93): período de carencia de 1 año. Definición: muerte consciente y voluntaria. Enajenación mental excluye suicidio."
+    },
+    articulosLCS:["Art. 19","Art. 93"],
+    conexiones:["eje2","eje13"],
+    consejo:"Contraste eficaz: 'Si en daños la provocación libera al asegurador (art. 19), en caución la paradoja es que el siniestro lo causa necesariamente el tomador. Y en vida, el suicidio plantea una carencia temporal (art. 93)…'"
+  },
+  {
+    id:"eje15", nombre:"Prescripción y jurisdicción", categoria:"estructura",
+    temas:["T7","T8","T12"],
+    descripcion:"Art. 23 LCS: 2 años para daños, 5 para personas. Art. 24: jurisdicción del domicilio del asegurado. En RC: régimen prescriptivo específico.",
+    manifestaciones:{
+      T7:"Régimen general de los elementos formales: prescripción como límite temporal del contrato.",
+      T8:"Art. 23: plazos diferenciados. Dies a quo: conocimiento del siniestro. Art. 24: fuero imperativo.",
+      T12:"En RC: la prescripción tiene peculiaridades. Cláusulas claim made y su interacción con el régimen prescriptivo."
+    },
+    articulosLCS:["Art. 23","Art. 24"],
+    conexiones:["eje6","eje7"],
+    consejo:"La diferencia de plazos (2 vs. 5 años) es otra manifestación de la dualidad daños/personas. Las claim made en RC tensionan el sistema."
+  },
+  {
+    id:"eje16", nombre:"Función social del seguro", categoria:"principio",
+    temas:["T5","T12","T16","T17","T18"],
+    descripcion:"El seguro redistribuye socialmente el riesgo. Los seguros obligatorios, el CCS y el baremo son su máxima expresión institucional.",
+    manifestaciones:{
+      T5:"Garrigues: solo hay seguro cuando la reparación se distribuye entre muchos expuestos al mismo riesgo.",
+      T12:"El SOA protege víctimas de accidentes de circulación como política pública de primer orden.",
+      T16:"El baremo objetiva la reparación. Reparación íntegra: función social de igualdad entre víctimas.",
+      T17:"Seguros obligatorios: máxima expresión. El Estado impone la cobertura por interés social (viajeros, edificación, medioambiente).",
+      T18:"Seguros agrarios: Agroseguro y Enesa como mecanismos de política agraria. CCS en catástrofes."
+    },
+    articulosLCS:[],
+    conexiones:["eje7","eje12"],
+    consejo:"Gran cierre de la exposición: 'Del concepto técnico-jurídico (T5) a la función social: obligatorios (T17), CCS y agrarios (T18), baremo (T16) muestran cómo el Derecho usa el seguro como instrumento de política social.'"
+  },
+  {
+    id:"eje17", nombre:"Claim made y delimitación temporal del siniestro", categoria:"debate",
+    temas:["T8","T12","T16"],
+    descripcion:"Debate sobre cuándo se produce el siniestro en RC: ¿hecho motivador o reclamación? Las cláusulas claim made limitan la cobertura a reclamaciones formuladas durante la vigencia.",
+    manifestaciones:{
+      T8:"El siniestro como concepto general: materialización del riesgo cubierto. En RC: complejidad temporal.",
+      T12:"Cláusulas claim made: concepto, tipología, validez. Tensión con el art. 73. Jurisprudencia del TS.",
+      T16:"En SOA: la reclamación del perjudicado como dies a quo. Interacción con la oferta motivada y la prescripción."
+    },
+    articulosLCS:["Art. 73 LCS"],
+    conexiones:["eje15","eje1"],
+    consejo:"Debate vivo en la práctica: 'La delimitación temporal del siniestro en RC es una de las cuestiones más debatidas. La tensión entre el art. 73 y las cláusulas claim made obliga a equilibrar protección del asegurado y viabilidad técnica…'"
+  },
+  {
+    id:"eje18", nombre:"Seguro marítimo como origen histórico", categoria:"doctrina",
+    temas:["T5","T9","T10","T18"],
+    descripcion:"El seguro marítimo es el prototipo histórico de todo seguro de daños. El CC art. 1791 se inspiraba en él. La LCS superó esa visión, pero su influencia persiste.",
+    manifestaciones:{
+      T5:"El CC art. 1791 acusaba la influencia del seguro marítimo. La teoría dualista surge al intentar encajar la vida en ese molde.",
+      T9:"Las disposiciones generales de daños reflejan la lógica marítima: indemnización, peritación, abandono.",
+      T10:"El seguro de transporte terrestre (arts. 54-62) mantiene instituciones de origen marítimo: facultad de abandono, póliza flotante.",
+      T18:"Seguros marítimos: LNM. Póliza de viaje y tiempo. El círculo se cierra: del origen al régimen vigente."
+    },
+    articulosLCS:["Art. 1791 CC","Arts. 54-62 LCS","LNM"],
+    conexiones:["eje10","eje1"],
+    consejo:"Arco histórico: 'Comenzamos con el seguro marítimo como prototipo (T5), vemos su huella en transporte terrestre (T10), y cerramos con el régimen marítimo actual (T18). La LCS nació para superar esa visión parcial.'"
+  }
+];
+
+const BLOQUES = [
+  { id:1, titulo:"Parte General del Contrato", temas:["T5","T6","T7","T8"], color:"#818cf8", desc:"Concepto, elementos personales/reales/formales, disposiciones generales" },
+  { id:2, titulo:"Seguros de Daños", temas:["T9","T10","T11","T12"], color:"#fbbf24", desc:"Principio indemnizatorio, seguros de cosas, patrimonio, RC, defensa jurídica" },
+  { id:3, titulo:"Seguros de Personas y Especiales", temas:["T13","T14","T15","T16","T17","T18"], color:"#34d399", desc:"Personas, vida, accidentes, SOA/baremo, obligatorios, agrarios/marítimos/aéreo" }
+];
+
+// ═══════════════════════════════════════════════════════════════
+//  APP STATE & RENDER ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+const state = {
+  view: "bloques",
+  selectedBloque: null,
+  selectedEje: null,
+  selectedCell: null,
+  searchText: "",
+  filterCategoria: null,
+  filterBloque: null,
+  hoveredEje: null,
+};
+
+function setState(updates) {
+  Object.assign(state, updates);
+  render();
+}
+
+function getFilteredEjes() {
+  let result = EJES;
+  if (state.filterCategoria) result = result.filter(e => e.categoria === state.filterCategoria);
+  if (state.filterBloque) result = result.filter(e => e.temas.some(t => BLOQUES.find(b => b.id === state.filterBloque)?.temas.includes(t)));
+  if (state.searchText) {
+    const q = state.searchText.toLowerCase();
+    result = result.filter(e =>
+      e.nombre.toLowerCase().includes(q) ||
+      e.descripcion.toLowerCase().includes(q) ||
+      Object.values(e.manifestaciones).some(m => m.toLowerCase().includes(q)) ||
+      e.articulosLCS.some(a => a.toLowerCase().includes(q))
+    );
+  }
+  return result;
+}
+
+function isPuente(eje) {
+  const bloques = new Set(eje.temas.map(t => TEMAS[t]?.bloque));
+  return bloques.size > 1;
+}
+
+function temaTag(tid, size="sm") {
+  const t = TEMAS[tid];
+  if (!t) return '';
+  const p = size==="sm" ? "1px 6px" : "2px 8px";
+  const fs = size==="sm" ? "10px" : "11px";
+  return `<span class="tema-tag" style="background:${t.color}22;color:${t.color};padding:${p};font-size:${fs}">${tid}</span>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+function render() {
+  const app = document.getElementById('app');
+  const filtered = getFilteredEjes();
+  app.innerHTML = `
+    ${renderHeader()}
+    <main class="main">
+      ${state.view === 'bloques' ? renderBloques(filtered) : ''}
+      ${state.view === 'matriz' ? renderMatriz(filtered) : ''}
+      ${state.view === 'grafo' ? renderGrafo(filtered) : ''}
+      ${state.view === 'ejes' ? renderEjes(filtered) : ''}
+    </main>
+    ${state.selectedEje && state.view !== 'ejes' ? renderDetailOverlay() : ''}
+  `;
+  bindEvents();
+}
+
+function renderHeader() {
+  return `
+  <header class="header">
+    <div class="header-top">
+      <div>
+        <div class="header-title">Mapa Transversal — LCS</div>
+        <div class="header-sub">Temas 5–18 · Derecho del Contrato de Seguro · Oposición Inspector de Seguros del Estado</div>
+      </div>
+      <div class="tab-bar">
+        ${['bloques','matriz','grafo','ejes'].map(v =>
+          `<button class="tab-btn ${state.view===v?'active':''}" data-view="${v}">${
+            {bloques:'Bloques',matriz:'Matriz',grafo:'Red',ejes:'Ejes'}[v]
+          }</button>`
+        ).join('')}
+      </div>
+    </div>
+    <div class="filters">
+      <input class="search-input" type="text" placeholder="Buscar conceptos, artículos, doctrina…" value="${state.searchText}" id="searchInput">
+      <div class="filter-group">
+        ${BLOQUES.map(b => `
+          <button class="filter-btn" data-bloque="${b.id}"
+            style="border:1px solid ${state.filterBloque===b.id?b.color:'var(--border)'};
+            color:${state.filterBloque===b.id?b.color:'var(--text-muted)'};
+            background:${state.filterBloque===b.id?b.color+'15':'transparent'}">Bl.${b.id}</button>
+        `).join('')}
+      </div>
+      <div class="filter-group">
+        ${Object.entries(CATEGORIAS_EJE).map(([k,v]) => `
+          <button class="filter-btn" data-cat="${k}"
+            style="border:1px solid ${state.filterCategoria===k?v.color:'var(--border)'};
+            color:${state.filterCategoria===k?v.color:'var(--text-muted)'};
+            background:${state.filterCategoria===k?v.color+'15':'transparent'}">${v.icon} ${v.label}</button>
+        `).join('')}
+      </div>
+    </div>
+  </header>`;
+}
+
+function renderBloques(filtered) {
+  let html = `<div class="bloques-grid">`;
+  for (const b of BLOQUES) {
+    const ejesBloque = filtered.filter(e => e.temas.some(t => b.temas.includes(t)));
+    const puenteCount = ejesBloque.filter(isPuente).length;
+    const sel = state.selectedBloque === b.id;
+    html += `
+    <div class="bloque-card ${sel?'selected':''}" data-bloque-card="${b.id}"
+      style="border-color:${sel?b.color+'55':'var(--border)'}; background:${sel?b.color+'08':'var(--bg-card)'}">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${b.color};border-radius:14px 14px 0 0"></div>
+      <div class="bloque-header">
+        <div class="bloque-num" style="background:${b.color}18;color:${b.color}">${b.id}</div>
+        <div>
+          <div class="bloque-title">${b.titulo}</div>
+          <div class="bloque-desc">${b.desc}</div>
+        </div>
+      </div>
+      <div class="tema-tags">${b.temas.map(t => temaTag(t,'md')).join('')}</div>
+      <div class="bloque-stats">
+        <span>${ejesBloque.length} ejes transversales</span>
+        <span style="color:var(--accent-amber)">🌉 ${puenteCount} puentes</span>
+      </div>
+    </div>`;
+  }
+  html += `</div>`;
+
+  if (state.selectedBloque) {
+    const b = BLOQUES.find(x => x.id === state.selectedBloque);
+    const ejesBloque = filtered.filter(e => e.temas.some(t => b.temas.includes(t)));
+    html += `<div class="ejes-section-title fade-in">Ejes transversales — ${b.titulo}</div>`;
+    html += `<div class="ejes-grid fade-in">${ejesBloque.map(renderEjeCard).join('')}</div>`;
+  }
+  return html;
+}
+
+function renderEjeCard(eje) {
+  const cat = CATEGORIAS_EJE[eje.categoria];
+  const bridge = isPuente(eje);
+  return `
+  <div class="eje-card ${bridge?'puente':''}" data-eje="${eje.id}" style="border-left-color:${cat.color}">
+    ${bridge ? '<span class="puente-badge" title="Puente entre bloques">🌉</span>' : ''}
+    <div class="eje-cat-label" style="color:${cat.color}">${cat.icon} ${cat.label}</div>
+    <div class="eje-name">${eje.nombre}</div>
+    <div class="eje-temas">${eje.temas.map(t => temaTag(t)).join('')}</div>
+  </div>`;
+}
+
+function renderMatriz(filtered) {
+  const tids = Object.keys(TEMAS);
+  let html = `<div class="matriz-wrap"><table class="matriz-table"><thead><tr>
+    <th style="text-align:left;width:220px">Eje transversal</th>
+    ${tids.map(t => `<th style="color:${TEMAS[t].color};width:55px">${t}</th>`).join('')}
+    <th style="color:var(--accent-amber);width:40px">Σ</th>
+  </tr></thead><tbody>`;
+
+  for (const eje of filtered) {
+    const cat = CATEGORIAS_EJE[eje.categoria];
+    html += `<tr><td>
+      <div class="matriz-eje-name" data-eje="${eje.id}">
+        ${isPuente(eje)?'<span style="font-size:11px">🌉</span>':''}
+        <span style="font-size:10px;color:${cat.color}">${cat.icon}</span>
+        <span class="eje-name-text">${eje.nombre}</span>
+      </div></td>`;
+    for (const t of tids) {
+      const has = eje.temas.includes(t);
+      if (has) {
+        const manif = eje.manifestaciones[t] || '';
+        const intensity = Math.min(1, manif.length / 220);
+        const alpha = Math.round(intensity * 180 + 40).toString(16).padStart(2,'0');
+        const isSel = state.selectedCell?.ejeId===eje.id && state.selectedCell?.temaId===t;
+        html += `<td><div class="matriz-cell ${isSel?'selected':''}" data-mcell="${eje.id}|${t}"
+          style="background:${TEMAS[t].color}${alpha};${isSel?'border-color:'+TEMAS[t].color:''}"></div></td>`;
+      } else {
+        html += `<td><div class="matriz-cell empty"></div></td>`;
+      }
+    }
+    html += `<td class="sigma-col">${eje.temas.length}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+
+  if (state.selectedCell) {
+    const eje = EJES.find(e => e.id === state.selectedCell.ejeId);
+    const tema = TEMAS[state.selectedCell.temaId];
+    const manif = eje?.manifestaciones[state.selectedCell.temaId];
+    if (eje && tema && manif) {
+      html += `<div class="cell-detail" style="border-color:${tema.color}44">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          ${temaTag(state.selectedCell.temaId,'md')}
+          <span style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">${eje.nombre}</span>
+        </div>
+        <p class="manif-text">${manif}</p>
+      </div>`;
+    }
+  }
+  return html;
+}
+
+function renderGrafo(filtered) {
+  const W=940, H=620, CX=W/2, CY=H/2;
+  const tids = Object.keys(TEMAS);
+  const rOuter = 270, rInner = 145;
+
+  // Positions
+  const tPos = {};
+  tids.forEach((t,i) => {
+    const a = (i/tids.length)*2*Math.PI - Math.PI/2;
+    tPos[t] = { x: CX + rOuter*Math.cos(a), y: CY + rOuter*Math.sin(a) };
+  });
+  const ePos = {};
+  filtered.forEach((e,i) => {
+    const a = (i/filtered.length)*2*Math.PI - Math.PI/2;
+    ePos[e.id] = { x: CX + rInner*Math.cos(a), y: CY + rInner*Math.sin(a) };
+  });
+
+  const activeEje = state.hoveredEje || state.selectedEje;
+  const activeEjeObj = EJES.find(e => e.id === activeEje);
+
+  // SVG content
+  let svg = `<svg class="grafo-svg" viewBox="0 0 ${W} ${H}">`;
+
+  // Eje-tema links
+  for (const eje of filtered) {
+    const ep = ePos[eje.id]; if (!ep) continue;
+    for (const t of eje.temas) {
+      const tp = tPos[t]; if (!tp) continue;
+      const isActive = activeEje === eje.id;
+      svg += `<line x1="${ep.x}" y1="${ep.y}" x2="${tp.x}" y2="${tp.y}"
+        stroke="${isActive?TEMAS[t].color:'#1c2035'}" stroke-width="${isActive?2:0.5}"
+        stroke-opacity="${isActive?0.75:0.12}"/>`;
+    }
+  }
+
+  // Tema nodes
+  for (const t of tids) {
+    const p = tPos[t];
+    const hl = activeEjeObj?.temas.includes(t);
+    svg += `<circle cx="${p.x}" cy="${p.y}" r="23" fill="${hl?TEMAS[t].color+'33':'#10121c'}"
+      stroke="${TEMAS[t].color}" stroke-width="${hl?2.5:1}"/>
+      <text x="${p.x}" y="${p.y+1}" text-anchor="middle" dominant-baseline="central"
+        fill="${TEMAS[t].color}" font-size="11" font-weight="700" font-family="Outfit,sans-serif">${t}</text>`;
+  }
+
+  // Eje nodes
+  for (const eje of filtered) {
+    const p = ePos[eje.id]; if (!p) continue;
+    const cat = CATEGORIAS_EJE[eje.categoria];
+    const isA = activeEje === eje.id;
+    const br = isPuente(eje);
+    svg += `<circle cx="${p.x}" cy="${p.y}" r="${isA?19:14}" fill="${isA?cat.color+'28':'#0b0d14'}"
+      stroke="${br?'#fbbf24':cat.color}" stroke-width="${isA?2.5:1.5}"
+      ${br?'stroke-dasharray="4 2"':''} class="eje-node" data-eje-node="${eje.id}" style="cursor:pointer"/>
+      <text x="${p.x}" y="${p.y+1}" text-anchor="middle" dominant-baseline="central"
+        fill="${cat.color}" font-size="9" style="pointer-events:none">${cat.icon}</text>`;
+  }
+  svg += `</svg>`;
+
+  // Sidebar
+  const maxCount = Math.max(...tids.map(t => filtered.filter(e => e.temas.includes(t)).length));
+  let sidebar = `<div class="grafo-sidebar"><div class="grafo-sidebar-title">Cobertura por tema</div>`;
+  for (const t of tids) {
+    const count = filtered.filter(e => e.temas.includes(t)).length;
+    sidebar += `<div class="coverage-row">
+      <span class="coverage-label" style="color:${TEMAS[t].color}">${t}</span>
+      <div class="coverage-bar-bg"><div class="coverage-bar" style="width:${(count/maxCount)*100}%;background:${TEMAS[t].color}"></div></div>
+      <span class="coverage-count">${count}</span>
+    </div>`;
+  }
+  sidebar += `</div>`;
+
+  return `<div class="grafo-layout"><div class="grafo-svg-wrap">${svg}</div>${sidebar}</div>`;
+}
+
+function renderEjes(filtered) {
+  const eje = EJES.find(e => e.id === state.selectedEje);
+  return `<div class="ejes-layout">
+    <div class="ejes-sidebar">
+      <div class="ejes-section-title">Ejes transversales (${filtered.length})</div>
+      ${filtered.map(renderEjeCard).join('')}
+    </div>
+    <div class="ejes-main">
+      ${eje ? renderEjeDetail(eje) : '<div class="ejes-placeholder">Selecciona un eje para ver su detalle</div>'}
+    </div>
+  </div>`;
+}
+
+function renderEjeDetail(eje) {
+  const cat = CATEGORIAS_EJE[eje.categoria];
+  const tids = Object.keys(TEMAS);
+  const bridge = isPuente(eje);
+
+  let html = `<div class="fade-in">
+    <div class="eje-detail-header">
+      ${bridge?'<span style="font-size:20px" title="Puente entre bloques">🌉</span>':''}
+      <span class="eje-detail-badge" style="background:${cat.color}18;color:${cat.color}">${cat.icon} ${cat.label}</span>
+      <span class="eje-detail-title">${eje.nombre}</span>
+    </div>
+    <p class="eje-detail-desc">${eje.descripcion}</p>
+    <div class="section-title">Manifestación por tema</div>`;
+
+  for (const t of tids) {
+    const active = eje.temas.includes(t);
+    const manif = eje.manifestaciones[t];
+    const tema = TEMAS[t];
+    html += `<div class="manif-item ${active?'active':'inactive'}" ${active?`style="border-color:${tema.color}22"`:''}>
+      <div class="manif-header">
+        ${temaTag(t)} <span style="font-size:12px;color:var(--text-muted);font-weight:500">${tema.titulo.split(':')[0]}</span>
+      </div>
+      ${active && manif ? `<p class="manif-text">${manif}</p>` : ''}
+    </div>`;
+  }
+
+  if (eje.articulosLCS.length) {
+    html += `<div class="section-title" style="margin-top:18px">Artículos LCS vinculados</div>
+      <div class="art-tags">${eje.articulosLCS.map(a => `<span class="art-tag">${a}</span>`).join('')}</div>`;
+  }
+
+  html += `<div class="section-title" style="margin-top:18px">Ejes relacionados</div>
+    <div class="conn-tags">${eje.conexiones.map(cId => {
+      const c = EJES.find(e => e.id === cId);
+      if (!c) return '';
+      const cc = CATEGORIAS_EJE[c.categoria];
+      return `<button class="conn-btn" data-eje="${cId}" style="border-color:${cc.color}33;color:${cc.color}">${c.nombre}</button>`;
+    }).join('')}</div>`;
+
+  html += `<div class="consejo-box">
+    <div class="consejo-label">💡 Consejo para la exposición oral</div>
+    <p class="consejo-text">${eje.consejo}</p>
+  </div></div>`;
+
+  return html;
+}
+
+function renderDetailOverlay() {
+  const eje = EJES.find(e => e.id === state.selectedEje);
+  if (!eje) return '';
+  return `
+    <div class="detail-overlay-bg" id="overlayBg"></div>
+    <div class="detail-overlay">
+      <button class="close-btn" id="closeOverlay">✕</button>
+      ${renderEjeDetail(eje)}
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  EVENT BINDING
+// ═══════════════════════════════════════════════════════════════
+
+function bindEvents() {
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.onclick = () => setState({ view: btn.dataset.view, selectedEje: null, selectedCell: null });
+  });
+
+  // Search
+  const si = document.getElementById('searchInput');
+  if (si) si.oninput = (e) => setState({ searchText: e.target.value });
+
+  // Bloque filters
+  document.querySelectorAll('[data-bloque]').forEach(btn => {
+    if (btn.classList.contains('filter-btn')) {
+      btn.onclick = () => {
+        const id = parseInt(btn.dataset.bloque);
+        setState({ filterBloque: state.filterBloque === id ? null : id });
+      };
+    }
+  });
+
+  // Category filters
+  document.querySelectorAll('[data-cat]').forEach(btn => {
+    btn.onclick = () => setState({ filterCategoria: state.filterCategoria === btn.dataset.cat ? null : btn.dataset.cat });
+  });
+
+  // Bloque cards
+  document.querySelectorAll('[data-bloque-card]').forEach(card => {
+    card.onclick = () => {
+      const id = parseInt(card.dataset.bloqueCard);
+      setState({ selectedBloque: state.selectedBloque === id ? null : id });
+    };
+  });
+
+  // Eje cards & names
+  document.querySelectorAll('[data-eje]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      setState({ selectedEje: el.dataset.eje });
+    };
+  });
+
+  // Matrix cells
+  document.querySelectorAll('[data-mcell]').forEach(cell => {
+    cell.onclick = () => {
+      const [ejeId, temaId] = cell.dataset.mcell.split('|');
+      const isSame = state.selectedCell?.ejeId===ejeId && state.selectedCell?.temaId===temaId;
+      setState({ selectedCell: isSame ? null : { ejeId, temaId } });
+    };
+  });
+
+  // Grafo eje nodes
+  document.querySelectorAll('[data-eje-node]').forEach(node => {
+    node.onmouseenter = () => { state.hoveredEje = node.dataset.ejeNode; render(); };
+    node.onmouseleave = () => { state.hoveredEje = null; render(); };
+    node.onclick = () => setState({ selectedEje: node.dataset.ejeNode });
+  });
+
+  // Overlay close
+  const closeBg = document.getElementById('overlayBg');
+  const closeBtn = document.getElementById('closeOverlay');
+  if (closeBg) closeBg.onclick = () => setState({ selectedEje: null });
+  if (closeBtn) closeBtn.onclick = () => setState({ selectedEje: null });
+
+  // Restore search focus
+  const si2 = document.getElementById('searchInput');
+  if (si2 && document.activeElement?.className === 'search-input') {
+    si2.focus();
+    si2.selectionStart = si2.selectionEnd = si2.value.length;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+render();
+</script>
+</body>
+</html>
