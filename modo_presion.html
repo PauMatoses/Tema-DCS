@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>MODO PRESIÓN — LCS</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+@font-face{font-family:'M';src:local('IBM Plex Mono'),local('Menlo'),local('Consolas');font-display:swap}
+body{background:#000;color:#fff;font-family:'M',monospace;height:100vh;overflow:hidden;cursor:none;user-select:none}
+#app{height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+
+/* Timer */
+#timer{position:fixed;top:20px;right:28px;font-size:64px;font-weight:700;color:#222;transition:color 0.3s}
+#timer.warn{color:#f59e0b}
+#timer.crit{color:#ef4444}
+#timer.hidden{opacity:0}
+
+/* Mode indicator */
+#mode{position:fixed;top:24px;left:28px;font-size:11px;color:#333;letter-spacing:0.15em;text-transform:uppercase}
+
+/* Stimulus */
+#stimulus{font-size:13px;color:#555;letter-spacing:0.2em;text-transform:uppercase;margin-bottom:32px;text-align:center;min-height:20px}
+
+/* Tokens */
+#tokens{text-align:center;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;transition:opacity 0.15s}
+#tokens.hide{opacity:0}
+.token{font-size:28px;font-weight:700;color:#fff;line-height:1.4;white-space:nowrap}
+.token .art{color:#818cf8}
+.token .arrow{color:#333;margin:0 8px}
+.token .kw{color:#e2e4e9}
+
+/* Recall prompt */
+#recall{font-size:18px;color:#ef4444;letter-spacing:0.3em;text-transform:uppercase;display:none;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* Bottom bar */
+#bottom{position:fixed;bottom:20px;left:0;right:0;display:flex;justify-content:center;gap:24px;font-size:10px;color:#222;letter-spacing:0.1em}
+#bottom span{transition:color 0.2s}
+#bottom span:hover{color:#444}
+
+/* Weak marker */
+#weak{position:fixed;top:24px;center:0;display:flex;gap:4px}
+.weak-dot{width:6px;height:6px;border-radius:50%;background:#ef4444}
+
+/* Progress */
+#progress{position:fixed;bottom:0;left:0;height:2px;background:#818cf8;transition:width 0.3s}
+
+/* Score */
+#score{position:fixed;top:60px;right:28px;font-size:11px;color:#333}
+
+/* Chain indicator */
+#chain{position:fixed;bottom:40px;left:0;right:0;display:flex;justify-content:center;gap:4px;align-items:center}
+.chain-dot{width:8px;height:8px;border-radius:50%;background:#222;transition:all 0.2s}
+.chain-dot.done{background:#818cf8}
+.chain-dot.current{background:#fff;transform:scale(1.5)}
+.chain-dot.upcoming{background:#222}
+
+/* Beep */
+#beep{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="mode">RANDOM</div>
+  <div id="timer" class="hidden">3</div>
+  <div id="stimulus"></div>
+  <div id="tokens"></div>
+  <div id="recall">▸ RECALL ◂</div>
+  <div id="score"></div>
+  <div id="bottom">
+    <span>[SPACE] siguiente</span>
+    <span>[R] repetir</span>
+    <span>[H] mostrar/ocultar</span>
+    <span>[A] secuencial</span>
+    <span>[S] aleatorio</span>
+    <span>[C] cadena</span>
+    <span>[F] fallo</span>
+    <span>[V] voz</span>
+    <span>[X] silencio</span>
+    <span>[1-3] velocidad</span>
+  </div>
+  <div id="progress" style="width:0%"></div>
+  <div id="chain"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  DATA: Compressed tokens per topic
+// ═══════════════════════════════════════════════════════════════
+
+const TOPICS = {
+T1:{t:"T1 — EL RIESGO",tokens:["1 → SIN RIESGO NO HAY SEGURO","4 → EVENTO · PROBABILIDAD · OBJETO","4 → SÍ · CUÁNDO · CUÁNTO","4 → NO VOLUNTAD · AZAR","4 → NECESIDAD PATRIMONIAL","4 → CLASES → DAÑOS · PERSONAS","4 → 8 PRESUPUESTOS","4 → LEY GRANDES NÚMEROS","10 → SELECCIÓN · VIGILANCIA","19 → RIESGO MORAL","10 → SELECCIÓN ADVERSA","80 → MAPA: VIDA · ACCID · RC · INCEND"]},
+T2:{t:"T2 — EL VALOR ASEGURADO",tokens:["26 → VALOR REAL · REPOSICIÓN · VENAL","27 → SUMA = TECHO MÁXIMO","28 → PÓLIZA ESTIMADA · DOLO","29 → SEGURO PLENO = IDEAL"]},
+T3:{t:"T3 — LA PRIMA",tokens:["14 → PRECIO DE LA GARANTÍA","14 → FRECUENCIA × INTENSIDAD","14 → NATURAL ↔ NIVELADA","14 → TABLAS + ESTADÍSTICA","14 → INDIVISIBLE · INVARIABLE · SUFICIENTE","14 → BONUS-MALUS","33 → COASEGURO · CUOTAS","POOL → NUCLEAR · AGRO","LLOYD'S → MERCADO · SINDICATOS"]},
+T4:{t:"T4 — EL REASEGURO",tokens:["77 → SEGURO DEL SEGURO","77 → DISPERSIÓN · CAPACIDAD · ESTABILIDAD","77 → PROPORCIONAL ↔ NO PROPORCIONAL","77 → FACULTATIVO ↔ OBLIGATORIO","77 → CUOTA PARTE · EXCEDENTE · PLENO","77 → TRATADO → AUTOMÁTICO","77 → EXCESS-LOSS → PRIORIDAD","77 → STOP-LOSS → RESULTADO GLOBAL","77 → CAT BONDS → MERCADO CAPITALES"]},
+T5:{t:"T5 — CONCEPTO Y CARACTERES",tokens:["1791 → CC DEROGADO → DUALIDAD","1 → INDEMNIZAR O SATISFACER","1 → UBERRIMAE FIDEI","1 → SUSTANTIVO · CONSENSUAL · BILATERAL","1 → ONEROSO · ALEATORIO · TRACTO","22 → MÁX 10 AÑOS · VIDA SIN LÍMITE","50/1980 → 4 TÍTULOS · 109 ARTS","2 → IMPERATIVIDAD · IUS COGENS"]},
+T6:{t:"T6 — ELEMENTOS PERSONALES Y REALES",tokens:["LOSSEAR → AUTORIZACIÓN · NULIDAD","7 → TOMADOR · ASEGURADO · BENEFICIARIO","7 → CUENTA PROPIA ↔ AJENA","84-88 → DESIGNACIÓN · REVOCACIÓN","1257 CC → FAVOR DE TERCERO","76 → ACCIÓN DIRECTA PERJUDICADO","4 → RIESGO: POSIBILIDAD · AZAR · NECESIDAD","14-15 → PRIMA: 1M SUSPENSIÓN · 6M RESOLUCIÓN","25 → INTERÉS: NULIDAD SIN ÉL"]},
+T7:{t:"T7 — ELEMENTOS FORMALES",tokens:["6 → SOLICITUD NO VINCULA","1262 CC → OFERTA + ACEPTACIÓN","6 → PROPOSICIÓN 15 DÍAS","5 → PÓLIZA PROBATORIA · CONSENSUAL","6 → COBERTURA PROVISIONAL · GAP","8 → 12 MENCIONES MÍNIMAS","L22/2007 → DISTANCIA · 14 DÍAS DESISTIMIENTO"]},
+T8:{t:"T8 — DISPOSICIONES GENERALES",tokens:["3 → GENERALES · ESPECIALES · PARTICULARES","1281-89 CC → CONTRA PROFERENTEM","3 → LIMITATIVAS: DOBLE FILTRO","3 → LESIVAS: SIEMPRE NULAS","10 → CUESTIONARIO · DOLO/CULPA","11-12 → AGRAVACIÓN: 2M MODIF · 1M RESCIS","13 → DISMINUCIÓN: FACULTAD","14-15 → PRIMA: SIN EFECTOS · 1M · 6M","16 → SINIESTRO: 7 DÍAS","17 → SALVAMENTO: AMINORAR","19 → PROVOCACIÓN: MALA FE","20 → MORA: 3M → 20% ANUAL","22-23 → DURACIÓN 10A · PRESCR 2/5","24 → JURISDICCIÓN: DOMICILIO ASEGURADO"]},
+T9:{t:"T9 — SEGUROS CONTRA DAÑOS",tokens:["25 → INTERÉS: NULIDAD SIN ÉL","26 → NO ENRIQUECIMIENTO","27 → SUMA = LÍMITE MÁXIMO","28 → ESTIMADA · DOLO","30 → INFRASEGURO → PROPORCIONAL","31 → SOBRESEGURO → REDUCCIÓN/NULIDAD","32 → MÚLTIPLE: COMUNICAR","34-36 → TRANSMISIÓN: SUBROG AUTOMÁTICA","38 → PERITACIÓN: TERCER PERITO","40-42 → ACREEDORES: EXTENSIÓN","43 → SUBROGACIÓN: QUIEN DAÑA PAGA"]},
+T10:{t:"T10 — SEGUROS SOBRE COSAS",tokens:["45 → INCENDIO: VALOR AL SINIESTRO","48 → CASO FORTUITO SÍ · DOLO NO","50 → ROBO: SUSTRACCIÓN ILEGÍTIMA","52 → RECUPERACIÓN: ASEGURADO ELIGE","54-62 → TRANSPORTE: CARGA A DESCARGA","56-57 → ABANDONO: EXCEPCIÓN INDEMN","62 → PÓLIZA FLOTANTE: ABONO"]},
+T11:{t:"T11 — SEGUROS PATRIMONIALES",tokens:["63 → LUCRO CESANTE: RENDIMIENTO","66 → PARALIZACIÓN: PÉRDIDA BENEFICIOS","67 → NO PREDETERMINAR","68 → CAUCIÓN: INCUMPLIMIENTO TOMADOR","68 → CAUCIÓN ≠ FIANZA: 5 EJES","1822-24 CC → ACCESORIEDAD · EXCUSIÓN","68 → PRIMER REQUERIMIENTO","69 → CRÉDITO: INSOLVENCIA DEFINITIVA","70 → 4 SUPUESTOS INSOLVENCIA","71 → PÉRDIDA FINAL: MÍN 50%","72 → EXHIBIR · COLABORAR"]},
+T12:{t:"T12 — RC Y DEFENSA JURÍDICA",tokens:["1902 CC → QUIEN CAUSA DAÑO REPARA","73 → RC: DEUDA PATRIMONIAL","73 → SINIESTRO: ¿HECHO O RECLAMACIÓN?","73 → CLAIM MADE: DEBATE VIVO","74 → DIRECCIÓN JURÍDICA","76 → ACCIÓN DIRECTA → PERJUDICADO","76 → INOPONIBILIDAD EXCEPCIONES","76 → REPETICIÓN: DOLO ASEGURADO","76a-g → DEFENSA: LIBRE ELECCIÓN ABOGADO"]},
+T13:{t:"T13 — PERSONAS Y VIDA",tokens:["80 → RUPTURA: NO INDEMNIZACIÓN","82 → NO SUBROGACIÓN · SALVO SANITARIOS","80 → SEGUROS DE GRUPO: COLECTIVO","83 → VIDA: MUERTE · SUPERV · MIXTO","83 → SELECCIÓN: CUESTIONARIO SALUD","95-96 → PROVISIÓN MATEMÁTICA","96 → RESCATE · 95 → REDUCCIÓN","97 → ANTICIPO · 99 → CESIÓN/PRENDA"]},
+T14:{t:"T14 — ESPECÍFICOS VIDA",tokens:["83 → MENORES: CONSENT + AUTORIZ","83 → PROHIBICIÓN <14 AÑOS: ABSOLUTA","84 → BENEFICIARIO: DERECHO PROPIO","85-86 → HIJOS · HEREDEROS · CÓNYUGE","87 → REVOCABLE SALVO RENUNCIA","88 → AUN CONTRA HEREDEROS","89 → INDISPUTABILIDAD: 1 AÑO","93 → SUICIDIO: CONSCIENTE · VOLUNTARIO","L2005 → REGISTRO: 15 DÍAS · 7 HÁBILES","DA4 → NO DISCRIMINACIÓN: JUSTIFICADA","DA5 → OLVIDO ONCOLÓGICO: 5 AÑOS"]},
+T15:{t:"T15 — ACCIDENTES · ENFERMEDAD · DECESOS",tokens:["100 → 4 NOTAS: VIOLENTO · SÚBITO · EXTERNO · INVOLUNTARIO","100 → FRONTERA: ACCIDENTE ≠ ENFERMEDAD","100 → ACUMULAR ES LÍCITO","19 → AUTOLESIÓN: LIBERA","104 → MUERTE · INVALIDEZ · TEMPORAL","105 → ENFERMEDAD: REEMBOLSO ↔ CUADRO","43 CE → URGENCIA VITAL: OBLIGATORIA","106bis → DECESOS: FUNERARIO · ANUAL","L39 → DEPENDENCIA: COMPLEMENTARIO"]},
+T16:{t:"T16 — SOA Y BAREMO",tokens:["TRLR → SOA: TODO VEHÍCULO","1902 CC → RC: CUASI-OBJETIVA","TRLR → ELEMENTOS: CONDUCTOR · DAÑO · NEXO","TRLR → OBLIGATORIO + CCS SUBSIDIARIO","TRLR → COBERT OBLIGAT + VOLUNTARIA","TRLR/7 → OFERTA MOTIVADA: 3 MESES","20 → MORA: 20% + OFERTA","L35 → BAREMO: ÍNTEGRA · VERTEBRADA","L35 → 5 CATEGORÍAS PERJUDICADOS"]},
+T17:{t:"T17 — SEGUROS OBLIGATORIOS",tokens:["L6 → SOV: VIAJEROS 1928","SEC → RC ACTIVIDADES: SECTORIAL","LOE → EDIFICACIÓN: 10-3-1 AÑOS","L57 → CANTIDADES ANTICIPADAS: DEVOLUCIÓN","L12 → NUCLEAR: RESP OBJETIVA · POOL","L26 → MEDIOAMBIENTAL: 20M€","CCS → FONDO COMPENSACIÓN"]},
+T18:{t:"T18 — AGRARIOS · MARÍTIMOS · AÉREO",tokens:["L87 → AGROSEGURO + ENESA","L87 → POOL + SUBVENCIÓN","L87 → PEDRISCO · HELADA · SEQUÍA","L87 → PLAN ANUAL","LNM → MARÍTIMO: VIAJE ↔ TIEMPO","LNM → INTERÉS AMPLIO · ESTIMADA","LNM → AVERÍA GRUESA · ABANDONO","RD607 → RECREO: RC OBLIGATORIO","MTL → AÉREO: MONTREAL · OBJETIVA"]}
+};
+
+// Chain sequences for oral simulation
+const CHAINS = {
+  "Parte General": ["T1","T2","T3","T4","T5","T6","T7","T8"],
+  "Daños": ["T9","T10","T11","T12"],
+  "Personas + Especiales": ["T13","T14","T15","T16","T17","T18"],
+  "Oral Completo": ["T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18"],
+  "Ejes clave": ["T5","T8","T9","T12","T13","T14","T16"],
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+
+const tids = Object.keys(TOPICS);
+let mode = 'random'; // random | sequential | chain
+let seqIdx = 0;
+let chainName = '';
+let chainIdx = 0;
+let currentTid = null;
+let timerInterval = null;
+let timerVal = 3;
+let speed = 3; // seconds
+let tokensVisible = true;
+let failCount = {};
+let totalShown = 0;
+let totalRecalled = 0;
+let weakTopics = new Set();
+let paused = false;
+
+// Audio context for beep
+let audioCtx = null;
+function beep(freq=440, dur=0.08) {
+  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.value = freq;
+  g.gain.value = 0.1;
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CORE LOGIC
+// ═══════════════════════════════════════════════════════════════
+
+function pickTopic() {
+  if (mode === 'random') {
+    currentTid = tids[Math.floor(Math.random() * tids.length)];
+  } else if (mode === 'sequential') {
+    currentTid = tids[seqIdx % tids.length];
+    seqIdx++;
+  } else if (mode === 'chain') {
+    const chain = CHAINS[chainName];
+    if (!chain) { mode = 'random'; pickTopic(); return; }
+    currentTid = chain[chainIdx % chain.length];
+    chainIdx++;
+    renderChain(chain, chainIdx - 1);
+  }
+}
+
+function showTopic() {
+  totalShown++;
+  const topic = TOPICS[currentTid];
+  if (!topic) return;
+
+  document.getElementById('stimulus').textContent = topic.t;
+  const container = document.getElementById('tokens');
+  container.classList.remove('hide');
+  container.innerHTML = topic.tokens.map(t => {
+    const parts = t.split(' → ');
+    const art = parts[0];
+    const rest = parts.slice(1).join(' → ');
+    return `<div class="token"><span class="art">${art}</span><span class="arrow"> → </span><span class="kw">${rest}</span></div>`;
+  }).join('');
+
+  document.getElementById('recall').style.display = 'none';
+  tokensVisible = true;
+
+  // Randomize timer slightly for stress
+  const jitter = mode === 'chain' ? (Math.random() * 1.5 - 0.5) : (Math.random() * 1 - 0.3);
+  timerVal = Math.max(2, Math.round((speed + jitter) * 10) / 10);
+  startTimer();
+  updateScore();
+  updateProgress();
+}
+
+function startTimer() {
+  clearInterval(timerInterval);
+  const el = document.getElementById('timer');
+  el.classList.remove('hidden', 'warn', 'crit');
+  let remaining = timerVal;
+  el.textContent = Math.ceil(remaining);
+
+  timerInterval = setInterval(() => {
+    remaining -= 0.1;
+    el.textContent = Math.ceil(remaining);
+    if (remaining <= 1.5) el.classList.add('crit');
+    else if (remaining <= 2.5) el.classList.add('warn');
+    else { el.classList.remove('warn', 'crit'); }
+
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      hideTokens();
+      beep(220, 0.15);
+    }
+  }, 100);
+}
+
+function hideTokens() {
+  clearInterval(timerInterval);
+  document.getElementById('tokens').classList.add('hide');
+  document.getElementById('recall').style.display = 'block';
+  document.getElementById('timer').classList.add('hidden');
+  tokensVisible = false;
+}
+
+function revealTokens() {
+  document.getElementById('tokens').classList.remove('hide');
+  document.getElementById('recall').style.display = 'none';
+  tokensVisible = true;
+  totalRecalled++;
+  updateScore();
+}
+
+function next() {
+  clearInterval(timerInterval);
+  pickTopic();
+  showTopic();
+}
+
+function repeat() {
+  clearInterval(timerInterval);
+  showTopic();
+}
+
+function fail() {
+  if (!currentTid) return;
+  weakTopics.add(currentTid);
+  failCount[currentTid] = (failCount[currentTid] || 0) + 1;
+  beep(150, 0.3);
+  // Repeat 3 times
+  let reps = 3;
+  const doRep = () => {
+    if (reps <= 0) { next(); return; }
+    reps--;
+    showTopic();
+    setTimeout(() => {
+      hideTokens();
+      setTimeout(doRep, 1500);
+    }, speed * 1000);
+  };
+  doRep();
+}
+
+function toggleHide() {
+  if (tokensVisible) hideTokens();
+  else revealTokens();
+}
+
+function setMode(m) {
+  mode = m;
+  seqIdx = 0;
+  chainIdx = 0;
+  document.getElementById('mode').textContent = m.toUpperCase();
+  document.getElementById('chain').innerHTML = '';
+  if (m === 'chain') showChainPicker();
+  else next();
+}
+
+function setSpeed(s) {
+  speed = s;
+  document.getElementById('mode').textContent = mode.toUpperCase() + ' · ' + s + 's';
+}
+
+function showChainPicker() {
+  const el = document.getElementById('tokens');
+  el.classList.remove('hide');
+  el.innerHTML = Object.keys(CHAINS).map((name, i) =>
+    `<div class="token" style="cursor:pointer;color:#818cf8" onclick="startChain('${name}')">[${i+1}] ${name}</div>`
+  ).join('');
+  document.getElementById('stimulus').textContent = 'SELECCIONA CADENA';
+  document.getElementById('recall').style.display = 'none';
+}
+
+function startChain(name) {
+  chainName = name;
+  chainIdx = 0;
+  next();
+}
+
+function renderChain(chain, idx) {
+  document.getElementById('chain').innerHTML = chain.map((t, i) => {
+    let cls = 'chain-dot';
+    if (i < idx) cls += ' done';
+    else if (i === idx) cls += ' current';
+    else cls += ' upcoming';
+    return `<div class="${cls}" title="${t}"></div>`;
+  }).join('');
+}
+
+function updateScore() {
+  const pct = totalShown > 0 ? Math.round((totalRecalled / totalShown) * 100) : 0;
+  document.getElementById('score').textContent = `${totalRecalled}/${totalShown} · ${pct}%` + (weakTopics.size > 0 ? ` · ⚠${weakTopics.size}` : '');
+}
+
+function updateProgress() {
+  if (mode === 'sequential') {
+    document.getElementById('progress').style.width = ((seqIdx / tids.length) * 100) + '%';
+  } else if (mode === 'chain' && chainName) {
+    const chain = CHAINS[chainName];
+    document.getElementById('progress').style.width = ((chainIdx / chain.length) * 100) + '%';
+  }
+}
+
+// TTS
+function speak(text) {
+  if ('speechSynthesis' in window) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'es-ES'; u.rate = 1.2;
+    speechSynthesis.speak(u);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════════════════════════
+
+document.addEventListener('keydown', e => {
+  switch(e.code) {
+    case 'Space':
+    case 'Enter':
+      e.preventDefault();
+      if (!tokensVisible) { revealTokens(); setTimeout(next, 800); }
+      else next();
+      break;
+    case 'KeyR': repeat(); break;
+    case 'KeyH': toggleHide(); break;
+    case 'KeyA': setMode('sequential'); break;
+    case 'KeyS': setMode('random'); break;
+    case 'KeyC': setMode('chain'); break;
+    case 'KeyF': fail(); break;
+    case 'KeyV': if (currentTid) speak(TOPICS[currentTid].tokens.join('. ')); break;
+    case 'KeyX': if ('speechSynthesis' in window) speechSynthesis.cancel(); break;
+    case 'Digit1': setSpeed(2); break;
+    case 'Digit2': setSpeed(3); break;
+    case 'Digit3': setSpeed(5); break;
+  }
+});
+
+// Touch support
+document.addEventListener('touchstart', e => {
+  if (!tokensVisible) { revealTokens(); setTimeout(next, 800); }
+  else next();
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+next();
+</script>
+</body>
+</html>
